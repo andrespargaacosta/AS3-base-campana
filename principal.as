@@ -31,14 +31,11 @@ package com.luminarieWorks
 		public var ratioY:Number;
 
 		public var externalConfig:Boolean = true;
-				
-		//array de funciones que se ejecutan cuando se escala...
-		private var _customFunctionsOnScale:Boolean = false;
-		public var _customFunctions:Array = new Array();
-		public var _customFunctionsArgs:Array = new Array();
-		public var dspList:Array = new Array();
-		
-		public function principal(autoinit:Boolean = true,autoEscala:Boolean = false, customFunctionsOnScale:Boolean = false)
+		public var verbose:Boolean = false;
+
+		public var initialObjectsProperties:Object;
+
+		public function principal(autoinit:Boolean = true,autoEscala:Boolean = false, customFunctionsOnScale:Boolean = false,verbose:Boolean = false)
 		{
 			super();
 			myStage = this.stage;
@@ -47,23 +44,23 @@ package com.luminarieWorks
 			myStage.scaleMode = StageScaleMode.NO_SCALE;
 			myStage.align = StageAlign.TOP_LEFT;
 			myStage.showDefaultContextMenu = false;
+			this.verbose = verbose;
 			if(autoEscala || escalar){
 				ajusteAutomatico();
-			}
-			if(customFunctionsOnScale){
-				_customFunctionsOnScale = customFunctionsOnScale;
 			}
 		}
 		
 		public function ajusteAutomatico():void
 		{
+			if(initialObjectsProperties == null){
+				initialObjectsProperties = new Object
+			}
 			posicionesOriginales();
 			stage.addEventListener(Event.RESIZE,ajustarPantalla);
 			stage.dispatchEvent(new Event(Event.RESIZE));
 		}
 		public function ajustarPantalla(e:Event,omitir:Array=null):void
 		{
-			//trace("AjustarPantalla Dispatched");
 			actualH = myStage.stageHeight;
 			actualW = myStage.stageWidth;
 
@@ -75,33 +72,28 @@ package com.luminarieWorks
 				var mc:DisplayObject = DisplayObject(getChildAt(i));
 				if(mc!=null){
 					var s:String = mc.name;
+					if(!initialObjectsProperties.hasOwnProperty(mc.name)){
+						var o:Object = {
+							"x":mc.x,
+							"y":mc.y,
+							"scaleY":mc.scaleY,
+							"scaleX":mc.scaleX,
+							"target":mc,
+							"name":mc.name,
+							"visible":mc.visible,
+							"alpha":mc.alpha
+						}
+						initialObjectsProperties[mc.name] = o;
+					}
 					if(escalar){
-						if(s.search("_w")>0){
-							mc.scaleX = mc.scaleY = ratioOrig[s]*ratioX;
-						}else{
-							mc.scaleX = mc.scaleY = ratioOrig[s]*ratio;
+						mc.scaleX = mc.scaleY = ratioOrig[s]*ratio;
+						if(mc.name == "main_stage" || mc.name == "loader_target"){
+							mc.scaleX = mc.scaleY = ratioOrig[s]*ratioAlt;
 						}
 					}
 					mc.x = origX[mc.name]*ratioX;
 					mc.y = origY[mc.name]*ratioY;
 				}
-			}
-			if(_customFunctionsOnScale){
-				_customFunctions.forEach(execMe);
-			}
-		}
-		
-		public function addCustomResizeFunction(funcion:Function,params:Object = null):void{
-			_customFunctions.push(funcion);
-			_customFunctionsArgs.push(params);
-		}
-		
-		private function execMe(element:*, index:int, array:Array):void
-		{
-			if(_customFunctionsArgs[index] != null){
-				_customFunctions[index](_customFunctionsArgs[index]);
-			}else{
-				_customFunctions[index]();
 			}
 		}
 		
@@ -119,7 +111,6 @@ package com.luminarieWorks
 					origY[mc.name] = mc.y;
 					ratioOrig[mc.name] = mc.scaleX;
 				}
-				dspList.push(mc);
 			}
 		}
 		
@@ -139,76 +130,92 @@ package com.luminarieWorks
 			}
 		}
 		
-		public function update_pos(mc:DisplayObject,nx:Number,ny:Number,manualUpdate:Boolean = false){
-			//if(origX[mc.name] == null){
+		public function update_pos(mc:DisplayObject,nx:Number,ny:Number,noScale :Boolean = false,newScale:Number = 0, noPos:Boolean = false,triggerEvent:Boolean = true){
+			if(!noPos){
 				origX[mc.name] = nx;
 				origY[mc.name] = ny;
-			//}
-			ratioOrig[mc.name] = mc.scaleX;
-			if(!manualUpdate){
+			}
+			if((!noScale && ratioOrig.hasOwnProperty(mc.name)) || (noScale && !ratioOrig.hasOwnProperty(mc.name))){
+				if(newScale>0){
+					ratioOrig[mc.name] = newScale;
+				}else{
+					ratioOrig[mc.name] = mc.scaleX;
+				}
+			}
+			if(triggerEvent){
 				stage.dispatchEvent(new Event(Event.RESIZE));
 			}
-			trace("posicion actualizada para "+mc.name+" - nx:"+nx+" ny:"+ny);
 		}
 		
 		public function makebtn(mc:MovieClip,click:Function,over:Function = null,out:Function = null):void{
-			//trace("1");
 			mc.addEventListener(MouseEvent.CLICK,click);
-			//trace("2");
 			mc.buttonMode = true;
-			//trace("3");
 			mc.mouseChildren = false;
-			//trace("4");
 			mc.useHandCursor = true;
-			//trace("5");
 			if(over != null){
-				//trace("5.1");
 				mc.addEventListener(MouseEvent.ROLL_OVER,over);
 			}
 			if(out != null){
-				//trace("5.2");
 				mc.addEventListener(MouseEvent.ROLL_OUT,out);
 			}
 		}
+		
 		
 		public function returnAsMovieClip():MovieClip
 		{
 			return MovieClip(this);
 		}
 		
+		
+		
+		//algunos helpers
+		
 		override public function gotoAndPlay(frame:Object, scene:String=null):void{
 			super.gotoAndPlay(frame,scene);
-			dispatchEvent(new InsaneEvent(InsaneEvent.CAMBIO_FRAME));
-			//trace("gtp:"+me.currentFrameLabel);
+			dispatchEvent(new Event("eventgoToAndPlay",true));
 		}
 		
 		override public function gotoAndStop(frame:Object, scene:String=null):void{
 			super.gotoAndStop(frame,scene);
-			dispatchEvent(new InsaneEvent(InsaneEvent.CAMBIO_FRAME));
-			//trace("gts:"+me.currentFrameLabel);
+			dispatchEvent(new Event("eventgoToAndStop",true));
 		}
 		
 		override public function stop():void{
 			super.stop();
-			dispatchEvent(new InsaneEvent(InsaneEvent.STOP));
+			dispatchEvent(new Event("eventStop",true)); //cambiese por el evento que sea necesario
 		}
 		
+		
+		
+		//si el e.target tiene un fotograma llamado "s1" cuando uno hace over...
 		public function over(e:MouseEvent):void{
-			e.target.gotoAndPlay("s1");
-		}
-		public function out(e:MouseEvent):void{
-			e.target.gotoAndPlay("s2");
+			var mc:MovieClip = MovieClip(e.target);
+			for(var i :int = 0; i< mc.currentLabels.length;i++){
+				if(mc.currentLabels[i]["name"].indexOf("s1") > -1){
+					mc.gotoAndPlay("s1");
+				}
+			}
 		}
 
-		
-		public function jsTrace(...params):void{
-			for(var i=0; i<params.length; i++){
-				ExternalInterface.call("console.log",params[i]);
-				trace(params[i]);
+		//si el e.target tiene un fotograma llamado "s2" cuando uno hace out...
+		public function out(e:MouseEvent):void{
+			var mc:MovieClip = MovieClip(e.target);
+			for(var i :int = 0; i< mc.currentLabels.length;i++){
+				if(mc.currentLabels[i]["name"].indexOf("s2") > -1){
+					mc.gotoAndPlay("s2");
+				}
 			}
 		}
 		
-		//algunos helpers
+		
+		public function jsTrace(...params):void{
+			for(var i=0; i<params.length; i++){
+				if(ExternalInterface.available){
+					ExternalInterface.call("console.log",params[i]);
+				}
+				trace(params[i]);
+			}
+		}
 		
 		public static function randRange(start:Number, end:Number) : Number  
 		{  
@@ -226,6 +233,18 @@ package com.luminarieWorks
 		public static function htmlEscape(str:String):String {
 			return XML( new XMLNode( XMLNodeType.TEXT_NODE, str ) ).toXMLString();
 		}
+		
+		
+		public function google_analytics(bt:String):void {
+			trace("----------------------------LOG: "+bt);
+			ExternalInterface.call("googleAnalytics",bt);
+		}
+		
+		public static function isMail(email:String):Boolean{
+			var emailExpression:RegExp = /^[a-z][\w.-]+@\w[\w.-]+\.[\w.-]*[a-z][a-z]$/i;
+			return emailExpression.test(email);
+		}
+		
 		
 	}
 }
